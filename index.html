@@ -514,6 +514,48 @@
       .table-actions button { width: 100%; }
     }
   </style>
+
+<style id="responsive-extra">
+@media (max-width:1200px){
+.grid-pos,.two-col{grid-template-columns:1fr!important}
+.products{grid-template-columns:repeat(auto-fill,minmax(130px,1fr))}
+}
+@media (max-width:768px){
+.header{flex-direction:column;align-items:flex-start}
+.nav{display:grid;grid-template-columns:repeat(2,1fr)}
+.grid-overview{grid-template-columns:repeat(2,1fr)!important}
+.card{padding:12px}
+table{font-size:.82rem}
+}
+@media (max-width:480px){
+.shell{padding:10px}
+.products{grid-template-columns:repeat(2,1fr)!important}
+.grid-overview,.pay-grid,.form-grid{grid-template-columns:1fr!important}
+.stat-number{font-size:1.2rem}
+.nav{grid-template-columns:1fr 1fr}
+button{min-height:44px}
+}
+@media (min-width:1600px){
+.shell{max-width:1500px}
+.products{grid-template-columns:repeat(auto-fill,minmax(180px,1fr))}
+}
+</style>
+
+
+<style>
+body{overflow-x:hidden}
+.shell{overflow-x:hidden}
+.table-wrap{overflow-x:auto}
+@media(max-width:520px){
+.nav{grid-template-columns:1fr!important}
+.nav-btn{width:100%}
+table{min-width:0!important}
+th,td{white-space:normal!important;font-size:12px;padding:8px 4px}
+.table-actions{flex-direction:column}
+.grid-overview{grid-template-columns:1fr!important}
+.connection{max-width:100%}
+}
+</style>
 </head>
 <body>
   <header class="header">
@@ -541,6 +583,7 @@
               <span class="tiny" id="productCount"></span>
             </div>
             <input class="search" id="productSearch" type="search" placeholder="Search product or category">
+<div id="categoryButtons" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"></div>
             <div class="products" id="products"></div>
           </div>
 
@@ -605,12 +648,20 @@
       </section>
 
       <section class="view" id="reports">
+        <div class="card" style="margin-bottom:15px;">
+          <select id="summaryRange" class="field">
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="month">This Month</option>
+          </select>
+        </div>
         <div class="grid-overview">
           <div class="card"><div class="stat-label">Sales today</div><div class="stat-number" id="salesToday">P0.00</div></div>
           <div class="card"><div class="stat-label">Transactions today</div><div class="stat-number" id="txnToday">0</div></div>
           <div class="card"><div class="stat-label">Expenses today</div><div class="stat-number" id="expenseToday">P0.00</div></div>
           <div class="card"><div class="stat-label">Low stock items</div><div class="stat-number" id="lowStockCount">0</div></div>
         </div>
+<div class="card"><div class="stat-label">Profit</div><div class="stat-number" id="profitCard">P0.00</div></div>
         <div class="two-col">
           <div class="card">
             <div class="section-title"><h2>Recent Sales</h2></div>
@@ -699,7 +750,7 @@
       online: false
     };
 
-    const peso = (value) => "P" + Number(value || 0).toFixed(2);
+    const peso = (value) => "₱" + Number(value || 0).toFixed(2);
     const escapeHtml = (value) => String(value == null ? "" : value)
       .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
     function dateKey(value) {
@@ -815,20 +866,20 @@
     }
 
     function renderProducts() {
-      const search = byId("productSearch").value.toLowerCase().trim();
-      const products = state.products.filter((item) => {
-        return !search || item.name.toLowerCase().includes(search) || String(item.category).toLowerCase().includes(search);
-      });
-      byId("productCount").textContent = products.length + " item(s)";
-      byId("products").innerHTML = products.length ? products.map((item) => `
-        <button class="product" data-product-id="${escapeHtml(item.id)}" ${Number(item.stock) <= 0 ? "disabled" : ""}>
-          <span class="product-name">${escapeHtml(item.name)}</span>
-          <span class="product-meta">${escapeHtml(item.category)} | ${Number(item.stock)} ${escapeHtml(item.unit)}</span>
-          <span class="product-price">${peso(item.price)}</span>
-        </button>`).join("") : '<div class="empty">No matching products.</div>';
-    }
+const search=byId("productSearch").value.toLowerCase().trim();
+state.selectedCategory=state.selectedCategory||"All";
+const cats=["All",...new Set(state.products.map(p=>p.category||"Other"))];
+byId("categoryButtons").innerHTML=cats.map(c=>`<button class="secondary" style="min-height:36px" onclick="state.selectedCategory='${c}';renderProducts()">${c}</button>`).join("");
+const products=state.products.filter(item=>{
+ const m1=!search||item.name.toLowerCase().includes(search)||String(item.category).toLowerCase().includes(search);
+ const m2=state.selectedCategory==="All"||item.category===state.selectedCategory;
+ return m1&&m2;
+});
+byId("productCount").textContent=products.length+" item(s)";
+byId("products").innerHTML=products.length?products.map(item=>`<button class="product" data-product-id="${escapeHtml(item.id)}"><span class="product-name">${escapeHtml(item.name)}</span><span class="product-meta">${escapeHtml(item.category)} | ${item.stock}</span><span class="product-price">${peso(item.price)}</span></button>`).join(""):'<div class="empty">No products.</div>';
+}
 
-    function addToCart(id) {
+function addToCart(id) {
       const product = state.products.find((item) => item.id === id);
       const existing = state.cart.find((item) => item.id === id);
       const nextQty = existing ? existing.qty + 1 : 1;
@@ -893,22 +944,21 @@
     }
 
     function renderReports() {
-      const today = dateKey();
-      const salesToday = state.sales.filter((sale) => dateKey(sale.timestamp) === today);
-      const expensesToday = state.expenses.filter((expense) => dateKey(expense.timestamp) === today);
-      const totalSales = salesToday.reduce((sum, sale) => sum + Number(sale.total), 0);
-      const totalExpenses = expensesToday.reduce((sum, item) => sum + Number(item.amount), 0);
-      byId("salesToday").textContent = peso(totalSales);
-      byId("txnToday").textContent = salesToday.length;
-      byId("expenseToday").textContent = peso(totalExpenses);
-      byId("lowStockCount").textContent = state.products.filter((p) => Number(p.stock) <= Number(p.reorderLevel)).length;
-      byId("salesRows").innerHTML = state.sales.length ? state.sales.slice(0, 12).map((sale) => `
-        <tr><td>${new Date(sale.timestamp).toLocaleString()}</td><td>${escapeHtml(sale.txnId)}</td><td>${Number(sale.itemCount || 0)}</td><td>${peso(sale.total)}</td></tr>
-      `).join("") : '<tr><td colspan="4">No sales recorded yet.</td></tr>';
-      byId("expenseRows").innerHTML = state.expenses.length ? state.expenses.slice(0, 6).map((expense) => `
-        <tr><td>${escapeHtml(expense.description)}</td><td>${peso(expense.amount)}</td></tr>
-      `).join("") : '<tr><td>No expenses recorded.</td></tr>';
-    }
+let range=document.getElementById("summaryRange")?.value||"today";
+let now=new Date(),sales=[...state.sales],expenses=[...state.expenses];
+if(range==="today"){sales=sales.filter(s=>dateKey(s.timestamp)===dateKey());expenses=expenses.filter(e=>dateKey(e.timestamp)===dateKey());}
+if(range==="week"){sales=sales.filter(s=>(now-new Date(s.timestamp))/86400000<=7);expenses=expenses.filter(e=>(now-new Date(e.timestamp))/86400000<=7);}
+if(range==="month"){sales=sales.filter(s=>new Date(s.timestamp).getMonth()===now.getMonth());expenses=expenses.filter(e=>new Date(e.timestamp).getMonth()===now.getMonth());}
+const totalSales=sales.reduce((a,b)=>a+Number(b.total),0);
+const totalExpenses=expenses.reduce((a,b)=>a+Number(b.amount),0);
+byId("salesToday").textContent=peso(totalSales);
+byId("txnToday").textContent=sales.length;
+byId("expenseToday").textContent=peso(totalExpenses);
+byId("lowStockCount").textContent=state.products.filter(p=>Number(p.stock)<=Number(p.reorderLevel)).length;
+let p=document.getElementById("profitCard"); if(p) p.textContent=peso(totalSales-totalExpenses);
+byId("salesRows").innerHTML=sales.length?sales.slice(0,12).map(s=>`<tr><td>${new Date(s.timestamp).toLocaleString()}</td><td>${s.txnId}</td><td>${s.itemCount||0}</td><td>${peso(s.total)}</td></tr>`).join(""):'<tr><td colspan="4">No sales</td></tr>';
+byId("expenseRows").innerHTML=expenses.length?expenses.slice(0,6).map(e=>`<tr><td>${e.description}</td><td>${peso(e.amount)}</td></tr>`).join(""):'<tr><td>No expenses</td></tr>';
+}
 
     function editProduct(id) {
       const item = state.products.find((product) => product.id === id);
@@ -1096,6 +1146,7 @@
     byId("expenseForm").addEventListener("submit", saveExpense);
     byId("resetFormBtn").addEventListener("click", resetProductForm);
     byId("refreshBtn").addEventListener("click", loadData);
+ document.getElementById("summaryRange")?.addEventListener("change",renderReports);
     byId("saveUrlBtn").addEventListener("click", () => connectSheet(false));
     byId("testUrlBtn").addEventListener("click", () => connectSheet(true));
     byId("demoBtn").addEventListener("click", () => {
