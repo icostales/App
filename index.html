@@ -323,6 +323,17 @@
 
     .action-row > * { flex: 1; }
 
+    .table-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
+    .table-actions button {
+      padding: 8px 10px;
+      font-size: 0.84rem;
+    }
+
     .notice {
       margin-top: 12px;
       padding: 10px 12px;
@@ -802,7 +813,12 @@
           <td>${peso(item.price)}</td>
           <td>${Number(item.stock)} ${escapeHtml(item.unit)}</td>
           <td><span class="badge ${low ? "low" : ""}">${low ? "Low stock" : "Available"}</span></td>
-          <td><button class="secondary" data-edit-id="${escapeHtml(item.id)}">Edit</button></td>
+          <td>
+            <div class="table-actions">
+              <button class="secondary" data-edit-id="${escapeHtml(item.id)}">Edit</button>
+              <button class="danger" data-delete-id="${escapeHtml(item.id)}">Delete</button>
+            </div>
+          </td>
         </tr>`;
       }).join("") : '<tr><td colspan="5">No products saved.</td></tr>';
     }
@@ -866,6 +882,27 @@
         }
         showNotice("productNotice", "Product saved successfully.");
         resetProductForm();
+      } catch (error) {
+        showNotice("productNotice", error.message, true);
+      }
+    }
+
+    async function deleteProduct(id) {
+      const product = state.products.find((item) => item.id === id);
+      if (!product || !window.confirm("Delete " + product.name + " from inventory?")) return;
+
+      try {
+        if (state.online) {
+          await request("deleteProduct", { id: product.id });
+          await loadData();
+        } else {
+          state.products = state.products.filter((item) => item.id !== product.id);
+          saveDemoData();
+        }
+        state.cart = state.cart.filter((item) => item.id !== product.id);
+        if (byId("productId").value === product.id) resetProductForm();
+        renderAll();
+        showNotice("productNotice", product.name + " deleted.");
       } catch (error) {
         showNotice("productNotice", error.message, true);
       }
@@ -978,8 +1015,10 @@
       if (button) adjustQty(button.dataset.qty, Number(button.dataset.change));
     });
     byId("inventoryRows").addEventListener("click", (event) => {
-      const button = event.target.closest("[data-edit-id]");
-      if (button) editProduct(button.dataset.editId);
+      const editButton = event.target.closest("[data-edit-id]");
+      const deleteButton = event.target.closest("[data-delete-id]");
+      if (editButton) editProduct(editButton.dataset.editId);
+      if (deleteButton) deleteProduct(deleteButton.dataset.deleteId);
     });
     byId("cash").addEventListener("input", renderCart);
     byId("clearCartBtn").addEventListener("click", () => { state.cart = []; renderCart(); });
